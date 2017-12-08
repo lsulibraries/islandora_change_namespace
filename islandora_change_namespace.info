@@ -1,0 +1,6 @@
+name = "Islandora Change Namespace"
+description = "Move objects from one collection to another."
+package = Islandora Tools
+dependencies[] = islandora
+version = 7.x-dev
+core = 7.x
