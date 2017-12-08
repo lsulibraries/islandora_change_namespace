@@ -58,6 +58,17 @@ function islandora_change_namespace_drush_command() {
     return $items;
 }
 
+/**
+ * Clones an object from one namespace to another.
+ *
+ * Gleefully adapted from code posted by Alan Stanley to Google Groups:
+ * https://groups.google.com/d/msg/islandora/H6zcwb7lnGo/B5x1eELPJ-EJ
+ *
+ * @param type $repository
+ * @param type $source_pid
+ * @param type $target_pid
+ * @return type
+ */
 function clone_object($repository, $source_pid, $target_pid) {
     $source_object = islandora_object_load($source_pid);
     $new_object = $repository->constructObject($target_pid);
