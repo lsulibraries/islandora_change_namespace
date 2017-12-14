@@ -69,12 +69,19 @@ function islandora_change_namespace_drush_command() {
  * @param string $new_pid
  * @return string The newly-minted pid of the cloned object.
  */
-function clone_object($repository, $source_pid, $new_pid) {
+function clone_object($repository, $source_pid, $new_pid, &$errors) {
   $source_object = islandora_object_load($source_pid);
   $new_object = $repository->constructObject($new_pid);
   $new_object->label = $source_object->label;
   foreach ($source_object as $dsid => $content) {
-    $new_object->ingestDatastream($content);
+    if (!$source_object[$dsid]->content) {
+      $msg = "$source_pid: No content found for DSID $dsid in object $source_pid while trying to clone into $new_pid.";
+      drush_log($msg, 'warning');
+      $errors[] = $msg;
+    }
+    else {
+      $new_object->ingestDatastream($content);
+    }
   }
   $new_object->relationships->changeObjectID($new_object->id);
   $ingested_object = islandora_add_object($new_object);
@@ -91,11 +98,25 @@ function get_drush_options() {
   $pid = drush_get_option('pid');
   $new_pid = drush_get_option('new_pid');
   $parent = drush_get_option('parent', FALSE);
-  if (islandora_object_load($new_pid)) {
-    drush_set_error("Object $new_pid already exists.");
+  if (!islandora_object_load($pid)) {
+    drush_set_error("Source pid $pid does not exist!");
     drush_die();
   }
+
   return array($purge, $pid, $new_pid, $parent);
+}
+
+function display_errors($errors) {
+  if (!empty($errors)) {
+    $err_str = implode(',', $errors);
+    drush_log(t("Errors occurred during processing: \n @errors", array('@errors' => $err_str)), 'warning');
+    $err_file = "/tmp/drush-ns-clone-errors-" . time();
+    file_put_contents($err_file, $err_str);
+    drush_log(t("Errors can be found in @error_file", array('@error_file' => $err_file)), 'warning');
+  }
+  else {
+    drush_log("No errors encountered during processing.", 'ok');
+  }
 }
 
 function drush_islandora_change_namespace_item() {
@@ -114,23 +135,33 @@ function drush_islandora_change_namespace_item() {
 }
 
 function drush_islandora_change_namespace_collection() {
+  $errors = array();
   list($purge, $pid, $new_pid, $parent) = get_drush_options();
   module_load_include('module', 'islandora_basic_collection', 'islandora_basic_collection');
   module_load_include('inc', 'islandora', 'includes/IslandoraTuque');
   $tuque = new IslandoraTuque();
   $repository = $tuque->repository;
 
-  $new_collection_pid = clone_object($repository, $pid, $new_pid);
-  drush_log(t('Created @pid', array('@pid' => $new_collection_pid)), 'ok');
-  $new_namespace = explode(':', $new_collection_pid)[0];
+  if (islandora_object_load($new_pid)) {
+    drush_log("Object $new_pid already exists.", 'info');
+    $new_namespace = explode(':', $new_pid)[0];
+    $new_collection_pid = $new_pid;
+  }
+  else {
+    $new_collection_pid = clone_object($repository, $pid, $new_pid, $errors);
+    drush_log(t('Created @pid', array('@pid' => $new_collection_pid)), 'ok');
+    $new_namespace = explode(':', $new_collection_pid)[0];
+  }
+
 
   $source_collection = islandora_object_load($pid);
   list($not_used, $members) = islandora_basic_collection_get_member_objects($source_collection, 0, -1);
 
   foreach ($members as $member_pid) {
+    $starting_error_count = count($errors);
     drush_log(t('Processing @pid', array('@pid' => $member_pid['object']['value'])), 'ok');
 
-    $new_member_pid = clone_object($repository, $member_pid['object']['value'], $new_namespace);
+    $new_member_pid = clone_object($repository, $member_pid['object']['value'], $new_namespace, $errors);
     drush_log(t(' - Created @pid', array('@pid' => $new_member_pid)), 'ok');
 
     islandora_change_namespace_migrate_item($new_member_pid, $new_collection_pid);
@@ -145,7 +176,7 @@ function drush_islandora_change_namespace_collection() {
       $new_member = islandora_object_load($new_member_pid);
 
       foreach ($constituents as $constituent) {
-        $new_constituent_pid = clone_object($repository, $constituent, $new_namespace);
+        $new_constituent_pid = clone_object($repository, $constituent, $new_namespace, $errors);
 
         $new_constituent = islandora_object_load($new_constituent_pid);
         islandora_compound_object_add_parent(array($new_constituent), array($new_member));
@@ -153,21 +184,35 @@ function drush_islandora_change_namespace_collection() {
         drush_log(t(' ---- Created constituent @pid', array('@pid' => $new_constituent->id)), 'ok');
 
         if ($purge) {
-          $repository->purgeObject($constituent);
-          drush_log(t(' ---- Purged constituent @pid', array('@pid' => $constituent)), 'ok');
+          if (count($errors) == $starting_error_count) {
+            $repository->purgeObject($constituent);
+            drush_log(t(' ---- Purged constituent @pid', array('@pid' => $constituent)), 'ok');
+          }
+          else {
+            drush_log(t(' ---- Not purging constituent due to errors @pid', array('@pid' => $constituent)), 'ok');
+          }
         }
       }
     }
     if ($purge) {
-      $repository->purgeObject($member_pid['object']['value']);
-      drush_log(t(' ----- Purged @pid', array('@pid' => $member->id)), 'ok');
+      if (count($errors) == $starting_error_count) {
+        $repository->purgeObject($member_pid['object']['value']);
+        drush_log(t(' ----- Purged @pid', array('@pid' => $member->id)), 'ok');
+      }
+      else {
+        drush_log(t(' ----- Not purging @pid', array('@pid' => $member->id)), 'warning');
+      }
     }
   }
 
-  if ($purge) {
+  if ($purge && empty($errors)) {
     $repository->purgeObject($pid);
     drush_log(t('- Purged collection @pid', array('@pid' => $pid)), 'ok');
   }
+  else {
+    drush_log("Not purging collection due to errors.", "warning");
+  }
+  display_errors($errors);
 }
 
 /**
