@@ -75,7 +75,7 @@ function clone_object($repository, $source_pid, $new_pid, &$errors) {
   $new_object->label = $source_object->label;
   foreach ($source_object as $dsid => $content) {
     if (!$source_object[$dsid]->content) {
-      $msg = "$source_pid: No content found for DSID $dsid in object $source_pid while trying to clone into $new_pid.";
+      $msg = "$source_pid: No content found for DSID $dsid in object $source_pid while trying to clone into namespace $new_pid.";
       drush_log($msg, 'warning');
       $errors[] = $msg;
     }
@@ -205,12 +205,14 @@ function drush_islandora_change_namespace_collection() {
     }
   }
 
-  if ($purge && empty($errors)) {
-    $repository->purgeObject($pid);
-    drush_log(t('- Purged collection @pid', array('@pid' => $pid)), 'ok');
-  }
-  else {
-    drush_log("Not purging collection due to errors.", "warning");
+  if ($purge) {
+    if (empty($errors)) {
+      $repository->purgeObject($pid);
+      drush_log(t('- Purged collection @pid', array('@pid' => $pid)), 'ok');
+    }
+    else {
+      drush_log(t("Not purging collection @pid due to errors.", array('@pid' => $pid)), "warning");
+    }
   }
   display_errors($errors);
 }
