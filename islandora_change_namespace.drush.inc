@@ -83,15 +83,15 @@ function drush_islandora_change_namespace_collection() {
     $tuque = new IslandoraTuque();
     $repository = $tuque->repository;
 
-//    if (islandora_object_load($target_collection_pid)) {
-//        drush_log("Object $target_collection_pid already exists.", 'info');
-//        $new_namespace = explode(':', $target_collection_pid)[0];
-//        $new_collection_pid = $target_collection_pid;
-//    } else {
-//        $new_collection_pid = clone_object($repository, $source_collection_pid, $target_collection_pid, $errors);
-//        drush_log(t('Created @pid', array('@pid' => $new_collection_pid)), 'ok');
-//        $new_namespace = explode(':', $new_collection_pid)[0];
-//    }
+    if (islandora_object_load($target_collection_pid)) {
+        drush_log("Object $target_collection_pid already exists.", 'info');
+        $new_namespace = explode(':', $target_collection_pid)[0];
+        $new_collection_pid = $target_collection_pid;
+    } else {
+        $new_collection_pid = clone_object($repository, $source_collection_pid, $target_collection_pid, $errors);
+        drush_log(t('Created @pid', array('@pid' => $new_collection_pid)), 'ok');
+        $new_namespace = explode(':', $new_collection_pid)[0];
+    }
 
     $preprocessor_params = array(
         'source_collection_pid' => $source_collection_pid,
@@ -101,7 +101,4 @@ function drush_islandora_change_namespace_collection() {
     $preprocessor = new NamespaceClonePreprocessor($tuque, $preprocessor_params);
     $preprocessed = islandora_batch_handle_preprocessor($preprocessor);
     drush_log(t("SetId: @s", array('@s' => $preprocessor->getSetId())), "ok");
-
-
-    display_errors($errors);
 }
