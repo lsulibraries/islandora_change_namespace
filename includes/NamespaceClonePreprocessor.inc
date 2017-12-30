@@ -37,6 +37,9 @@ class NamespaceClonePreprocessor extends IslandoraBatchPreprocessor {
         $constituents = islandora_compound_object_get_parts($cpdSrcParentObject->id);
         $compound_error_count = array();
         foreach ($constituents as $constituent_pid) {
+            $escaped_pid = str_replace(':', '_', $cpdSrcParentObject->id);
+            $cpdConstituentObject = islandora_object_load($constituent_pid);
+            $this->parameters['sequence_number'] = $cpdConstituentObject->relationships->get(ISLANDORA_RELS_EXT_URI, "isSequenceNumberOf$escaped_pid")[0]['object']['value'];
             $this->parameters['old_parent_pid'] = $cpdSrcParentObject->id;
             $this->parameters['new_parent_pid'] = $newParentObject->id;
             $batch_object = new NamespaceCloneBatchObjectCpdConstituent($this->connection, $constituent_pid, $this->parameters);
