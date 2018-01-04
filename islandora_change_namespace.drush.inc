@@ -117,7 +117,36 @@ function islandora_change_namespace_drush_command() {
             ),
         ),
     );
+    $items['islandora_change_namespace_collection_qa'] = array(
+        'aliases' => array('icnsptest'),
+        'description' => 'Compare origin collection to clone collection.',
+        'drupal dependencies' => array(
+            'islandora',
+        ),
+        'bootstrap' => DRUSH_BOOTSTRAP_DRUPAL_LOGIN,
+        'options' => array(
+            'origin' => array(
+                'description' => "origin pid.",
+                'value' => 'required',
+            ),
+            'clone' => array(
+                'description' => 'clone pid.',
+                'value' => 'required',
+            ),
+            'icns_verbose' => array(
+                'description' => 'verbose messaging.',
+                'value' => 'optional',
+            ),
+        ),
+    );
     return $items;
+}
+
+function drush_islandora_change_namespace_collection_qa() {
+    $origin_pid = drush_get_option('origin');
+    $clone_pid  = drush_get_option('clone');
+    module_load_include('inc', 'islandora_change_namespace', 'includes/qa');
+    islandora_change_namespace_collection_qa($origin_pid, $clone_pid);
 }
 
 function drush_islandora_change_namespace_item() {
