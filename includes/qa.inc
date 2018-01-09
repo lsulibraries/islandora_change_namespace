@@ -61,7 +61,7 @@ class IslandoraChangeNamespaceObjectPair {
       $this->log(sprintf("Datastream count mismatch: %s ==>> %s", $origin_ds_count, $clone_ds_count), LogLevel::ERROR);
       foreach ($this->origin as $dsid => $data) {
         if (!$this->clone[$dsid]) {
-          $result = sprintf("%s missing from clone.", $dsid);
+          $result = sprintf("%s missing from clone %s.", $dsid, $this->clone->id);
           $this->log($result, LogLevel::ERROR);
           $missing[] = $dsid;
           $results[] = $result;
@@ -69,7 +69,7 @@ class IslandoraChangeNamespaceObjectPair {
       }
       foreach ($this->clone as $dsid => $data) {
         if (!$this->origin[$dsid]) {
-          $result = sprintf("%s missing from origin.", $dsid);
+          $result = sprintf("%s missing from origin %s.", $dsid, $this->origin->id);
           $this->log($result, LogLevel::ERROR);
           $missing[] = $dsid;
           $results[] = $result;
