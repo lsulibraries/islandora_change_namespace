@@ -5,7 +5,23 @@ use Psr\Log\LogLevel;
 function islandora_change_namespace_collection_qa($origin_pid, $clone_pid) {
   $logfile = sprintf("/tmp/drush-%s__%s_%s.log", str_replace(':', '-', $origin_pid), str_replace(':', '-', $clone_pid), time());
   $collection_pair = new IslandoraChangeNamespaceCollectionObjectPair($origin_pid, $clone_pid, $logfile);
-  $collection_pair->compare();
+  $results = $collection_pair->compare();
+  $report_header = "\n\n\n=======\nResults\n=======\n\n";
+  if (empty($results)) {
+    $ok = "No discrepancies!";
+    drush_log($ok, LogLevel::NOTICE);
+    file_put_contents($logfile, sprintf("%s%s", $report_header, $ok), FILE_APPEND);
+  }
+  else {
+    drush_log("Discrepancies found: ", LogLevel::WARNING);
+    natsort($results);
+    foreach ($results as $result) {
+      drush_log($result, LogLevel::ERROR);
+    }
+    $report = sprintf("%s%s", $report_header, implode("\n", $results));
+    file_put_contents($logfile, $report, FILE_APPEND);
+  }
+  drush_log(sprintf("done. Find results in file %s", $logfile), LogLevel::NOTICE);
 }
 
 class IslandoraChangeNamespaceObjectPair {
@@ -29,29 +45,34 @@ class IslandoraChangeNamespaceObjectPair {
     $debug = drush_get_context()['cli']['debug'] && $drush_level == LogLevel::DEBUG ? LogLevel::DEBUG : NULL;
     $verbose_levels = array(LogLevel::NOTICE, $debug);
     if ($drush_level == LogLevel::ERROR || ($this->verbose && in_array($drush_level, $verbose_levels))) {
-      $log_msg = sprintf("[ %s ]      [ %s ==>> %s ] %s", $drush_level, $this->origin->id, $this->clone->id, $msg);
+      $log_msg = sprintf("   [ %s ==>> %s ] %s", $this->origin->id, $this->clone->id, $msg);
       $this->log[] = $log_msg;
       drush_log($log_msg, $drush_level);
-      file_put_contents($this->logfile, $log_msg . "\n", FILE_APPEND);
+      file_put_contents($this->logfile, sprintf("[ %-6s ]      %s%s", $drush_level, $log_msg, "\n"), FILE_APPEND);
     }
   }
 
   protected function compareDatastreams() {
     $origin_ds_count = count($this->origin);
     $clone_ds_count = count($this->clone);
-    $missing = array();
+    $missing = $results = array();
+
     if ($origin_ds_count != $clone_ds_count) {
       $this->log(sprintf("Datastream count mismatch: %s ==>> %s", $origin_ds_count, $clone_ds_count), LogLevel::ERROR);
       foreach ($this->origin as $dsid => $data) {
         if (!$this->clone[$dsid]) {
-          $this->log(sprintf("%s missing from clone.", $dsid), LogLevel::ERROR);
+          $result = sprintf("%s missing from clone.", $dsid);
+          $this->log($result, LogLevel::ERROR);
           $missing[] = $dsid;
+          $results[] = $result;
         }
       }
       foreach ($this->clone as $dsid => $data) {
         if (!$this->origin[$dsid]) {
-          $this->log(sprintf("%s missing from origin.", $dsid), LogLevel::ERROR);
+          $result = sprintf("%s missing from origin.", $dsid);
+          $this->log($result, LogLevel::ERROR);
           $missing[] = $dsid;
+          $results[] = $result;
         }
       }
     }
@@ -65,20 +86,24 @@ class IslandoraChangeNamespaceObjectPair {
         continue;
       }
       if (md5($this->origin[$dsid]->content) != md5($this->clone[$dsid]->content)) {
+        $results[] = sprintf("[ %s ==>> %s ] discrepancy in %s", $this->origin->id, $this->clone->id, $dsid);
         $this->log(sprintf("%s differs.", $dsid), LogLevel::ERROR);
       }
       else {
         $this->log(sprintf("%s matches.", $dsid), LogLevel::DEBUG);
       }
     }
+    return $results;
   }
 
   public function compare() {
-    $this->compareDatastreams();
+    $results = $this->compareDatastreams();
+
     if (in_array('islandora:compoundCModel', $this->origin->models)) {
       $compound = new IslandoraChangeNamespaceCompoundObjectPair($this->origin->id, $this->clone->id, $this->logfile);
-      $compound->compare();
+      $results = array_merge($results, $compound->compare());
     }
+    return $results;
   }
 
 }
@@ -108,26 +133,32 @@ abstract class IslandoraChangeNamespaceContainerObjectPair extends IslandoraChan
   }
 
   public function compare() {
-    $this->compareDatastreams();
-    $this->compareChildren();
+    $results = $this->compareDatastreams();
+    return array_merge($results, $this->compareChildren());
   }
 
   protected function compareChildren() {
     list($origin_children, $clone_children) = $this->getChildren();
     $map = $this->getMap($origin_children, $clone_children);
     $this->log("Comparing child objects ...", LogLevel::NOTICE);
+    $results = array();
     foreach ($map as $pair) {
       if (!array_key_exists('o', $pair)) {
-        $this->log(sprintf("%s missing mate in origin", $pair['c']), LogLevel::ERROR);
+        $result = sprintf("%s missing mate (or MODS mismatch) in origin", $pair['c']);
+        $results[] = $result;
+        $this->log($result, LogLevel::ERROR);
       }
       elseif (!array_key_exists('c', $pair)) {
-        $this->log(sprintf("%s missing mate in clone", $pair['o']), LogLevel::ERROR);
+        $result = sprintf("%s missing mate (or MODS mismatch) in clone", $pair['o']);
+        $results[] = $result;
+        $this->log($result, LogLevel::ERROR);
       }
       else {
         $comp = new IslandoraChangeNamespaceObjectPair($pair['o'], $pair['c'], $this->logfile);
-        $comp->compare();
+        $results = array_merge($results, $comp->compare());
       }
     }
+    return $results;
   }
 
   abstract function getChildren();
